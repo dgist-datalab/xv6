@@ -1458,7 +1458,8 @@ sbrktest(void)
     exit();
   }
   lastaddr = (char*) (BIG-1);
-  *lastaddr = 99;
+  scratch = 99;
+  memmove(lastaddr, &scratch, 1);
 
   // can one de-allocate?
   a = sbrk(0);
