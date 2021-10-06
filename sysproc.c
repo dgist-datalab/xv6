@@ -89,3 +89,26 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+int
+sys_getpstat(void)
+{
+	int i, j;
+	struct pstat *stat;
+	struct pstat *pst;
+	if (argptr(0, (void*)&stat, sizeof(*stat))<0)
+		return -1;
+
+	pst = myproc()->pst;
+	for (i=0; i<NPROC; i++) {
+		stat->inuse[i] = pst->inuse[i];
+		stat->pid[i] = pst->pid[i];
+		stat->priority[i] = pst->priority[i];
+		stat->state[i] = pst->state[i];
+		for (j=0; j<3; j++) {
+			stat->ticks[i][j] = pst->ticks[i][j];
+			stat->wait_ticks[i][j] = pst->wait_ticks[i][j];
+		}
+	}
+	return 0;
+}
