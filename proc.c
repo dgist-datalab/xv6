@@ -174,6 +174,15 @@ growproc(int n)
   return 0;
 }
 
+
+void pvminfo(void){
+	pde_t *ppgdir;
+	ppgdir = 0; // for compiling. You must remove this when succeesfully implemented
+	//in this space,
+	//you get pid and process' page directory address (pointer)
+	printvm(ppgdir);
+}
+
 // Create a new process copying p as the parent.
 // Sets up stack to return as if from system call.
 // Caller must set state of returned proc to RUNNABLE.

@@ -29,6 +29,13 @@ seginit(void)
   lgdt(c->gdt, sizeof(c->gdt));
 }
 
+void
+printvm(pde_t *pgdir)
+{
+	cprintf("will be implemented\n");
+}
+
+
 // Return the address of the PTE in page table pgdir
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page table pages.
