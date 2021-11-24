@@ -385,8 +385,26 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
   return 0;
 }
 
+/*
+ * Page fault handler can be called while console lock is acquired,
+ * and when cprintf() is re-entered, the kernel panics.
+ *
+ * The LOG macro should be used while performing early debugging only
+ * and it'll most likely cause a crash during normal operations.
+ */
+#define LOG 0
+#define clprintf(...) if (LOG) cprintf(__VA_ARGS__)
+
 void pagefault(void)
 {
+  struct proc *proc;
+
+  clprintf("pagefault++\n");
+
+  proc = myproc();
+  proc->page_faults++;
+
+  clprintf("pagefault--\n");
 }
 
 //PAGEBREAK!
