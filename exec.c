@@ -96,6 +96,8 @@ exec(char *path, char **argv)
   // Commit to the user image.
   oldpgdir = curproc->pgdir;
   curproc->pgdir = pgdir;
+  curproc->shadow_pgdir = setupkvm();
+  curproc->last_pde_entry = 0;
   curproc->sz = sz;
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;
