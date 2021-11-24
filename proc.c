@@ -382,7 +382,7 @@ sched(void)
   if(readeflags()&FL_IF)
     panic("sched interruptible");
   intena = mycpu()->intena;
-  cprintf("Process \"%s\" (pid: %d) had %d page faults\n", p->name, p->pid, p->page_faults);
+  // cprintf("Process \"%s\" (pid: %d) had %d page faults\n", p->name, p->pid, p->page_faults);
   swtch(&p->context, mycpu()->scheduler);
   mycpu()->intena = intena;
 }
