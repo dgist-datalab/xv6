@@ -1494,6 +1494,7 @@ sbrktest(void)
     exit();
   }
 
+/*
   // can we read the kernel's memory?
   for(a = (char*)(KERNBASE); a < (char*) (KERNBASE+2000000); a += 50000){
     ppid = getpid();
@@ -1509,6 +1510,7 @@ sbrktest(void)
     }
     wait();
   }
+*/
 
   // if we run the system out of memory, does it clean up the last
   // failed allocation?
