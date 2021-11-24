@@ -395,14 +395,66 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 #define LOG 0
 #define clprintf(...) if (LOG) cprintf(__VA_ARGS__)
 
+// Returns physical page address from virtual address
+static uint __virt_to_phys(pde_t *pgdir, struct proc *proc, uint va)
+{
+  uint pa;
+
+  pde_t *pde = &pgdir[PDX(va)];
+  pte_t *pgtable = (pte_t*)P2V(PTE_ADDR(*pde));
+
+  pa = PTE_ADDR(pgtable[PTX(va)]) | OWP(va);
+
+  return pa;
+}
+
+// Same as __virt_to_phys(), but with extra log
+static uint virt_to_phys(const char *log, pde_t *pgdir, struct proc *proc, uint va)
+{
+  uint pa = __virt_to_phys(pgdir, proc, va);
+
+  clprintf("virt_to_phys: translated \"%s\"(%d)'s VA 0x%x to PA 0x%x (%s)\n", proc->name, proc->pid, va, pa, log);
+
+  return pa;
+}
+
 void pagefault(void)
 {
   struct proc *proc;
+  pde_t *pde;
+  pte_t *pgtab;
+  uint va;
 
   clprintf("pagefault++\n");
 
   proc = myproc();
+
+  // Get the faulting virtual address
+  va = rcr2();
+  clprintf("Page fault by process \"%s\" (pid: %d) at 0x%x\n", proc->name, proc->pid, va);
+
+  // Print stock pgdir's translation result
+  virt_to_phys("pgdir", proc->pgdir, proc, va);
+
+  // Remove existing shadow_pgdir mapping
+  // XXX
+
+  // Map pgdir's page address to shadow_pgdir's page table
+  // XXX
+
+  /*
+   * Print shadow pgdir's translation result,
+   * this should match with stock pgdir's translation result above!
+   */
+  virt_to_phys("shadow_pgdir", proc->shadow_pgdir, proc, va);
+
+  proc->last_pde_entry = something;
   proc->page_faults++;
+
+  // Load a bogus pgdir to force a TLB flush
+  lcr3(V2P(something));
+  // Switch to our shadow pgdir
+  lcr3(V2P(proc->shadow_pgdir));
 
   clprintf("pagefault--\n");
 }
