@@ -39,7 +39,6 @@ struct proc {
   uint sz;                     // Size of process memory (bytes)
   pde_t* pgdir;                // Page table
   pde_t* shadow_pgdir;         // Empty page table for triggering page fault
-  pde_t* last_pde_entry;       // Last pde_t allocated in shadow_pgdir (to be freed)
   char *kstack;                // Bottom of kernel stack for this process
   enum procstate state;        // Process state
   int pid;                     // Process ID

@@ -130,7 +130,6 @@ userinit(void)
   if((p->pgdir = setupkvm()) == 0)
     panic("userinit: out of memory?");
   p->shadow_pgdir = setupkvm();
-  p->last_pde_entry = 0;
   inituvm(p->pgdir, _binary_initcode_start, (int)_binary_initcode_size);
   p->sz = PGSIZE;
   memset(p->tf, 0, sizeof(*p->tf));
@@ -200,7 +199,6 @@ fork(void)
     return -1;
   }
   np->shadow_pgdir = setupkvm();
-  np->last_pde_entry = 0;
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;

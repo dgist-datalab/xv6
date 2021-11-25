@@ -436,9 +436,6 @@ void pagefault(void)
   // Print stock pgdir's translation result
   virt_to_phys("pgdir", proc->pgdir, proc, va);
 
-  // Remove existing shadow_pgdir mapping
-  // XXX
-
   // Map pgdir's page address to shadow_pgdir's page table
   // XXX
 
@@ -448,7 +445,6 @@ void pagefault(void)
    */
   virt_to_phys("shadow_pgdir", proc->shadow_pgdir, proc, va);
 
-  proc->last_pde_entry = something;
   proc->page_faults++;
 
   // Load a bogus pgdir to force a TLB flush
