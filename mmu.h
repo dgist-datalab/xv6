@@ -70,21 +70,27 @@ struct segdesc {
 // +----------------+----------------+---------------------+
 //  \--- PDX(va) --/ \--- PTX(va) --/
 
+#define PD1XSHIFT		// TODO
+#define PD2XSHIFT		// TODO
+#define PTNXSHIFT		// TODO
+
 // page directory index
 #define PDX(va)         (((uint)(va) >> PDXSHIFT) & 0x3FF)
-
+#define PD1X(va)		// TODO
+#define PD2X(va)		// TODO
 // page table index
 #define PTX(va)         (((uint)(va) >> PTXSHIFT) & 0x3FF)
-
+#define PTNX(va)		// TODO
 // offset within page
 #define OWP(va)         ((uint)(va) & 0xFFF)
 
 // construct virtual address from indexes and offset
 #define PGADDR(d, t, o) ((uint)((d) << PDXSHIFT | (t) << PTXSHIFT | (o)))
-
+#define PG1ADDR(d, t, o) // TODO
+#define PG2ADDR(d, t, o) // TODO
+#define PG3ADDR(d1, d2, t, o) // TODO
 // Page directory and page table constants.
 #define NPDENTRIES      1024    // # directory entries per page directory
-#define NPTENTRIES      1024    // # PTEs per page table
 #define PGSIZE          4096    // bytes mapped by a page
 
 #define PTXSHIFT        12      // offset of PTX in a linear address

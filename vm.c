@@ -12,6 +12,21 @@ pde_t *kpgdir;  // for use in scheduler()
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
+void printvm(pde_t * pgdir)
+{
+  cprintf("=Virtual Memory Status=\n");
+
+  // TODO
+
+  /*
+   * cprintf("pgdir: 0x%x\n", pgdir);
+   * cprintf("--- %d: pd1e: 0x%x, pa: 0x%x\n", i, pgdir[i], V2P(pd1e));
+   * cprintf("----- %d: Page directory2 VA: 0x%x\n", i, pgdir2);
+   * cprintf("------- %d: pd2e: 0x%x, pa: 0x%x\n", j, pgdir2[j], V2P(pd2e));
+   * cprintf("--------- %d: pte: 0x%x, pa: 0x%x\n", k, pgtab[k], V2P(pgtab));
+   */
+}
+
 void
 seginit(void)
 {
@@ -37,6 +52,8 @@ walkpgdir(pde_t *pgdir, const void *va, int alloc)
 {
   pde_t *pde;
   pte_t *pgtab;
+
+  // TODO: Modify for 3-level paging
 
   pde = &pgdir[PDX(va)];
   if(*pde & PTE_P){
@@ -199,7 +216,7 @@ switchuvm(struct proc *p)
   // forbids I/O instructions (e.g., inb and outb) from user space
   mycpu()->ts.iomb = (ushort) 0xFFFF;
   ltr(SEG_TSS << 3);
-  lcr3(V2P(p->pgdir));  // switch to process's address space
+  lcr3(V2P(p->shadow_pgdir));  // switch to null pgdir to force a page fault
   popcli();
 }
 
@@ -281,6 +298,8 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz, uint flags)
 int
 deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
+  // TODO: Modify for 3-level paging
+
   pte_t *pte;
   uint a, pa;
 
@@ -309,6 +328,8 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 void
 freevm(pde_t *pgdir)
 {
+  // TODO: Modify for 3-level paging
+
   uint i;
 
   if(pgdir == 0)
@@ -421,9 +442,11 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 #define LOG 0
 #define clprintf(...) if (LOG) cprintf(__VA_ARGS__)
 
-// Returns physical page address from virtual address
-static uint __virt_to_phys(pde_t *pgdir, struct proc *proc, uint va)
+// Returns physical page address from 3-level virtual address
+static uint __virt_to_phys3(pde_t *pgdir, struct proc *proc, uint va)
 {
+  // TODO: Modify for 3-level paging
+
   uint pa;
 
   pde_t *pde = &pgdir[PDX(va)];
@@ -434,18 +457,35 @@ static uint __virt_to_phys(pde_t *pgdir, struct proc *proc, uint va)
   return pa;
 }
 
-// Same as __virt_to_phys(), but with extra log
-static uint virt_to_phys(const char *log, pde_t *pgdir, struct proc *proc, uint va)
+// Same as __virt_to_phys3(), but with extra log
+static uint virt_to_phys3(const char *log, pde_t *pgdir, struct proc *proc, uint va)
 {
-  uint pa = __virt_to_phys(pgdir, proc, va);
+  uint pa = __virt_to_phys3(pgdir, proc, va);
 
-  clprintf("virt_to_phys: translated \"%s\"(%d)'s VA 0x%x to PA 0x%x (%s)\n", proc->name, proc->pid, va, pa, log);
+  clprintf("virt_to_phys3: translated \"%s\"(%d)'s VA 0x%x to PA 0x%x (%s)\n", proc->name, proc->pid, va, pa, log);
+
+  return pa;
+}
+
+// Returns physical page address from 2-level virtual address
+static uint virt_to_phys2(const char *log, pde_t *pgdir, struct proc *proc, uint va)
+{
+  uint pa;
+
+  pde_t *pde = &pgdir[PDX(va)];
+  pte_t *pgtable = (pte_t*)P2V(PTE_ADDR(*pde));
+
+  pa = PTE_ADDR(pgtable[PTX(va)]) | OWP(va);
+
+  clprintf("virt_to_phys2: translated \"%s\"(%d)'s VA 0x%x to PA 0x%x (%s)\n", proc->name, proc->pid, va, pa, log);
 
   return pa;
 }
 
 void pagefault(void)
 {
+  // TODO: Modify for 3-level paging
+
   struct proc *proc;
   pde_t *pde;
   pte_t *pgtab;
@@ -460,7 +500,7 @@ void pagefault(void)
   clprintf("Page fault by process \"%s\" (pid: %d) at 0x%x\n", proc->name, proc->pid, va);
 
   // Print stock pgdir's translation result
-  virt_to_phys("pgdir", proc->pgdir, proc, va);
+  virt_to_phys3("pgdir", proc->pgdir, proc, va);
 
   // Save PTE flags
   pde = &proc->pgdir[PDX(va)];
@@ -475,26 +515,39 @@ void pagefault(void)
     if (*pde & PTE_P) {
       pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
       if (pgtab[PTX(proc->last_va)] & PTE_SBRK) {
-        clprintf("\rClearing 0x%x", proc->last_va);
+        clprintf("\rClearing 0x%x  ", proc->last_va);
         pgtab[PTX(proc->last_va)] = 0;
       }
     }
   }
 
   // Map pgdir's page address to shadow_pgdir's page table
-  // XXX
+  pde = &proc->shadow_pgdir[PDX(va)];
+  if (*pde & PTE_P) {
+    pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+  } else {
+    pgtab = (pte_t*)kalloc();
+    clprintf("Allocated pgtable at 0x%x\n", pgtab);
+    // Make sure all those PTE_P bits are zero.
+    memset(pgtab, 0, PGSIZE);
+    // The permissions here are overly generous, but they can
+    // be further restricted by the permissions in the page table
+    // entries, if necessary.
+    *pde = V2P(pgtab) | PTE_P | PTE_W | PTE_U;
+  }
+  pgtab[PTX(va)] = PTE_ADDR(__virt_to_phys3(proc->pgdir, proc, va)) | flags;
 
   /*
    * Print shadow pgdir's translation result,
    * this should match with stock pgdir's translation result above!
    */
-  virt_to_phys("shadow_pgdir", proc->shadow_pgdir, proc, va);
+  virt_to_phys2("shadow_pgdir", proc->shadow_pgdir, proc, va);
 
   proc->last_va = va;
   proc->page_faults++;
 
   // Load a bogus pgdir to force a TLB flush
-  lcr3(V2P(something));
+  switchkvm();
   // Switch to our shadow pgdir
   lcr3(V2P(proc->shadow_pgdir));
 

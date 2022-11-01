@@ -226,6 +226,16 @@ fork(void)
   return pid;
 }
 
+
+void pvminfo(void){
+  pde_t *ppgdir;
+  struct proc *curproc = myproc();
+  int cur_pid = curproc->pid;
+  ppgdir = curproc->pgdir;
+  cprintf("\ncurrent pid: %d\n", cur_pid);
+  printvm(ppgdir);
+}
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.
