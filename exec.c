@@ -49,7 +49,7 @@ exec(char *path, char **argv)
       goto bad;
     if(ph.vaddr + ph.memsz < ph.vaddr)
       goto bad;
-    if((sz = allocuvm(pgdir, sz, ph.vaddr + ph.memsz)) == 0)
+    if((sz = allocuvm(pgdir, sz, ph.vaddr + ph.memsz, 0)) == 0)
       goto bad;
     if(ph.vaddr % PGSIZE != 0)
       goto bad;
@@ -63,7 +63,7 @@ exec(char *path, char **argv)
   // Allocate two pages at the next page boundary.
   // Make the first inaccessible.  Use the second as the user stack.
   sz = PGROUNDUP(sz);
-  if((sz = allocuvm(pgdir, sz, sz + 2*PGSIZE)) == 0)
+  if((sz = allocuvm(pgdir, sz, sz + 2*PGSIZE, 0)) == 0)
     goto bad;
   clearpteu(pgdir, (char*)(sz - 2*PGSIZE));
   sp = sz;
@@ -97,6 +97,7 @@ exec(char *path, char **argv)
   oldpgdir = curproc->pgdir;
   curproc->pgdir = pgdir;
   curproc->shadow_pgdir = setupkvm(1);
+  curproc->last_va = 0;
   curproc->sz = sz;
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;

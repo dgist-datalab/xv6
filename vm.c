@@ -245,7 +245,7 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
 // Allocate page tables and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 int
-allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
+allocuvm(pde_t *pgdir, uint oldsz, uint newsz, uint flags)
 {
   char *mem;
   uint a;
@@ -264,7 +264,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       return 0;
     }
     memset(mem, 0, PGSIZE);
-    if(mappages(0, pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
+    if(mappages(0, pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U|flags) < 0){
       cprintf("allocuvm out of memory (2)\n");
       deallocuvm(pgdir, newsz, oldsz);
       kfree(mem);
@@ -449,7 +449,7 @@ void pagefault(void)
   struct proc *proc;
   pde_t *pde;
   pte_t *pgtab;
-  uint va;
+  uint va, flags = 0;
 
   clprintf("pagefault++\n");
 
@@ -462,6 +462,25 @@ void pagefault(void)
   // Print stock pgdir's translation result
   virt_to_phys("pgdir", proc->pgdir, proc, va);
 
+  // Save PTE flags
+  pde = &proc->pgdir[PDX(va)];
+  if(*pde & PTE_P){
+    pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+    flags = PTE_FLAGS(pgtab[PTX(va)]);
+  }
+
+  // Remove existing shadow_pgdir mapping
+  if (proc->last_va != 0 && proc->last_va != va) {
+    pde = &proc->shadow_pgdir[PDX(proc->last_va)];
+    if (*pde & PTE_P) {
+      pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+      if (pgtab[PTX(proc->last_va)] & PTE_SBRK) {
+        clprintf("\rClearing 0x%x", proc->last_va);
+        pgtab[PTX(proc->last_va)] = 0;
+      }
+    }
+  }
+
   // Map pgdir's page address to shadow_pgdir's page table
   // XXX
 
@@ -471,6 +490,7 @@ void pagefault(void)
    */
   virt_to_phys("shadow_pgdir", proc->shadow_pgdir, proc, va);
 
+  proc->last_va = va;
   proc->page_faults++;
 
   // Load a bogus pgdir to force a TLB flush

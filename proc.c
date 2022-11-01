@@ -130,6 +130,7 @@ userinit(void)
   if((p->pgdir = setupkvm(0)) == 0)
     panic("userinit: out of memory?");
   p->shadow_pgdir = setupkvm(1);
+  p->last_va = 0;
   inituvm(p->pgdir, _binary_initcode_start, (int)_binary_initcode_size);
   p->sz = PGSIZE;
   memset(p->tf, 0, sizeof(*p->tf));
@@ -165,7 +166,7 @@ growproc(int n)
 
   sz = curproc->sz;
   if(n > 0){
-    if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    if((sz = allocuvm(curproc->pgdir, sz, sz + n, PTE_SBRK)) == 0)
       return -1;
   } else if(n < 0){
     if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
@@ -199,6 +200,7 @@ fork(void)
     return -1;
   }
   np->shadow_pgdir = setupkvm(1);
+  np->last_va = 0;
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
@@ -249,6 +251,8 @@ exit(void)
   iput(curproc->cwd);
   end_op();
   curproc->cwd = 0;
+
+  // cprintf("Process \"%s\" (pid: %d) had %d page faults\n", curproc->name, curproc->pid, curproc->page_faults);
 
   acquire(&ptable.lock);
 
