@@ -1157,9 +1157,9 @@ bigfile(void)
     printf(1, "cannot create bigfile");
     exit();
   }
-  for(i = 0; i < 20; i++){
-    memset(buf, i, 600);
-    if(write(fd, buf, 600) != 600){
+  for(i = 0; i < MAXFILE; i++){
+    memset(buf, i%128, 511);
+    if(write(fd, buf, 511) != 511){
       printf(1, "write bigfile failed\n");
       exit();
     }
@@ -1173,25 +1173,25 @@ bigfile(void)
   }
   total = 0;
   for(i = 0; ; i++){
-    cc = read(fd, buf, 300);
+    cc = read(fd, buf, 511);
     if(cc < 0){
       printf(1, "read bigfile failed\n");
       exit();
     }
     if(cc == 0)
       break;
-    if(cc != 300){
+    if(cc != 511){
       printf(1, "short read bigfile\n");
       exit();
     }
-    if(buf[0] != i/2 || buf[299] != i/2){
-      printf(1, "read bigfile wrong data\n");
+    if(buf[0] != (i%128) || buf[510] != (i%128)){
+      printf(1, "read bigfile wrong data! buf[0] = %d, not %d/ buf[199]= %d, not %d\n", buf[0],(i%128)/2,buf[512],(i%128)/2);
       exit();
     }
     total += cc;
   }
   close(fd);
-  if(total != 20*600){
+  if(total != MAXFILE*511){
     printf(1, "read bigfile wrong total\n");
     exit();
   }
