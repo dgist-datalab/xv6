@@ -140,6 +140,7 @@ int             holdingsleep(struct sleeplock*);
 void            initsleeplock(struct sleeplock*, char*);
 
 // string.c
+void*           memcpy(void *dst, const void *src, uint n);
 int             memcmp(const void*, const void*, uint);
 void*           memmove(void*, const void*, uint);
 void*           memset(void*, int, uint);
@@ -147,6 +148,7 @@ char*           safestrcpy(char*, const char*, int);
 int             strlen(const char*);
 int             strncmp(const char*, const char*, uint);
 char*           strncpy(char*, const char*, int);
+#define strcpy(dst, src) memcpy(dst, src, strlen(src) + 1)
 
 // syscall.c
 int             argint(int, int*);
