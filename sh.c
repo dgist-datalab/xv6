@@ -133,7 +133,9 @@ runcmd(struct cmd *cmd)
 int
 getcmd(char *buf, int nbuf)
 {
-  printf(2, "$ ");
+  char hostname[64] = { 0, };
+  // TODO: Fill in hostname using gethostname()
+  printf(2, "root@%s# ", hostname);
   memset(buf, 0, nbuf);
   gets(buf, nbuf);
   if(buf[0] == 0) // EOF
