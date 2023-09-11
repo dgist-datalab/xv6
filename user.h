@@ -33,6 +33,7 @@ int strcmp(const char*, const char*);
 void printf(int, const char*, ...);
 char* gets(char*, int max);
 uint strlen(const char*);
+char* strcat(char *dst, const char *src);
 void* memset(void*, int, uint);
 void* malloc(uint);
 void free(void*);
