@@ -130,10 +130,54 @@ runcmd(struct cmd *cmd)
   exit();
 }
 
+char pwd[1024] = "/";
+
+void collapse_path(const char *input, char *output) {
+    int output_idx = 0; // Position to write next character in output
+    static int last_slash_positions[1024];
+    int last_slash_idx = -1; // Top of the stack of slash positions
+
+    for (int i = 0; input[i] != '\0'; ++i) {
+        if (input[i] == '/') {
+            if (i + 1 < strlen(input) && input[i + 1] == '.') {
+                // Check for "../"
+                if (i + 2 < strlen(input) && input[i + 2] == '.' &&
+                    (input[i + 3] == '\0' || input[i + 3] == '/')) {
+                    // Pop the last slash position off the stack
+                    if (last_slash_idx >= 0) {
+                        output_idx = last_slash_positions[last_slash_idx--];
+                    }
+                    i += 2; // Skip past "../"
+                    continue;
+                }
+                // Check for "./"
+                else if (i + 2 < strlen(input) && input[i + 2] == '/') {
+                    i += 1; // Skip past "./"
+                    continue;
+                }
+            }
+
+            // Push the current position onto the stack
+            last_slash_positions[++last_slash_idx] = output_idx;
+        }
+        output[output_idx++] = input[i];
+    }
+
+    // Null-terminate the output string
+    output[output_idx] = '\0';
+
+    // If the result is an empty string, then the path resolves to "/"
+    if (output_idx == 0) {
+        strcpy(output, "/");
+    }
+}
+
 int
 getcmd(char *buf, int nbuf)
 {
-  printf(2, "$ ");
+  char hostname[64] = { 0, };
+  // TODO: Fill in hostname using gethostname()
+  printf(2, "root@%s:%s$ ", hostname, pwd);
   memset(buf, 0, nbuf);
   gets(buf, nbuf);
   if(buf[0] == 0) // EOF
@@ -162,6 +206,16 @@ main(void)
       buf[strlen(buf)-1] = 0;  // chop \n
       if(chdir(buf+3) < 0)
         printf(2, "cannot cd %s\n", buf+3);
+      else {
+        static char tmp[1024] = { 0, };
+        // Append x from chdir(x) to pwd using strcat(), add "/" appropriately
+        // TODO
+
+        // Collapse pwd path and save it to tmp
+        collapse_path(pwd, tmp);
+        // Copy tmp back to pwd
+        strcpy(pwd, tmp);
+      }
       continue;
     }
     if(fork1() == 0)
