@@ -149,6 +149,7 @@ int             strlen(const char*);
 int             strncmp(const char*, const char*, uint);
 char*           strncpy(char*, const char*, int);
 #define strcpy(dst, src) memcpy(dst, src, strlen(src) + 1)
+char*           strcat(char *dst, const char *src);
 
 // syscall.c
 int             argint(int, int*);
