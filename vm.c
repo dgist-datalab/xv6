@@ -8,7 +8,14 @@
 #include "elf.h"
 
 extern char data[];  // defined by kernel.ld
+extern uint PTE_XV6[];
+extern uint PTE_KERN[];
+extern int PID[];
+extern uint VPN[];
 pde_t *kpgdir;  // for use in scheduler()
+static pde_t *null_pgdir; // used to force page faults
+
+int first_setup = 0;
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
@@ -32,17 +39,27 @@ seginit(void)
 // Return the address of the PTE in page table pgdir
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page table pages.
+
 static pte_t *
-walkpgdir(pde_t *pgdir, const void *va, int alloc)
+ittraverse(int pid, pde_t *pgdir, const void *va, int alloc) //You don't have to consider the pgdir argument
+{
+	uint idx; 
+	//TODO: File the code that returns corresponding PTE_XV6[idx]'s address for given pid and VA
+	//1. Handle two case: the VA is over KERNBASE or not.
+	//2. For former case, return &PTE_KERN[(uint)V2P(physical address)];
+	//3. For latter case, find the phyiscal address for given pid and va using inverted page table, and return &PTE_XV6[idx]
+}
+
+static pte_t *
+k_walkpgdir(pde_t *pgdir, const void *va, int alloc)
 {
   pde_t *pde;
   pte_t *pgtab;
-
   pde = &pgdir[PDX(va)];
   if(*pde & PTE_P){
     pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
   } else {
-    if(!alloc || (pgtab = (pte_t*)kalloc()) == 0)
+    if(!alloc || (pgtab = (pte_t*)kalloc(0,(char*)-1)) == 0)
       return 0;
     // Make sure all those PTE_P bits are zero.
     memset(pgtab, 0, PGSIZE);
@@ -58,7 +75,7 @@ walkpgdir(pde_t *pgdir, const void *va, int alloc)
 // physical addresses starting at pa. va and size might not
 // be page-aligned.
 static int
-mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
+mappages(int pid, int is_kernel, pde_t *pgdir, void *va, uint size, uint pa, int perm)
 {
   char *a, *last;
   pte_t *pte;
@@ -66,7 +83,11 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
   a = (char*)PGROUNDDOWN((uint)va);
   last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
   for(;;){
-    if((pte = walkpgdir(pgdir, a, 1)) == 0)
+    if (is_kernel)
+      pte = k_walkpgdir(pgdir, a, 1);
+    else
+      pte = ittraverse(pid, pgdir, a, 1);
+    if(pte == 0)
       return -1;
     if(*pte & PTE_P)
       panic("remap");
@@ -116,20 +137,25 @@ static struct kmap {
 
 // Set up kernel part of a page table.
 pde_t*
-setupkvm(void)
+setupkvm(int is_kernel)
 {
   pde_t *pgdir;
   struct kmap *k;
 
-  if((pgdir = (pde_t*)kalloc()) == 0)
+  if((pgdir = (pde_t*)kalloc(0,(char*)-1)) == 0)
     return 0;
   memset(pgdir, 0, PGSIZE);
   if (P2V(PHYSTOP) > (void*)DEVSPACE)
     panic("PHYSTOP too high");
+  if (first_setup == 1 && is_kernel == 0) {
+	  return pgdir;
+  }
+  if (first_setup == 0 && is_kernel == 0) first_setup = 1;
+  
   for(k = kmap; k < &kmap[NELEM(kmap)]; k++)
-    if(mappages(pgdir, k->virt, k->phys_end - k->phys_start,
+    if(mappages(0, is_kernel, pgdir, k->virt, k->phys_end - k->phys_start,
                 (uint)k->phys_start, k->perm) < 0) {
-      freevm(pgdir);
+      freevm(0, pgdir);
       return 0;
     }
   return pgdir;
@@ -140,7 +166,8 @@ setupkvm(void)
 void
 kvmalloc(void)
 {
-  kpgdir = setupkvm();
+  kpgdir = setupkvm(1);
+  null_pgdir = setupkvm(1); // XXX: Hmm
   switchkvm();
 }
 
@@ -162,7 +189,6 @@ switchuvm(struct proc *p)
     panic("switchuvm: no kstack");
   if(p->pgdir == 0)
     panic("switchuvm: no pgdir");
-
   pushcli();
   mycpu()->gdt[SEG_TSS] = SEG16(STS_T32A, &mycpu()->ts,
                                 sizeof(mycpu()->ts)-1, 0);
@@ -173,7 +199,8 @@ switchuvm(struct proc *p)
   // forbids I/O instructions (e.g., inb and outb) from user space
   mycpu()->ts.iomb = (ushort) 0xFFFF;
   ltr(SEG_TSS << 3);
-  lcr3(V2P(p->pgdir));  // switch to process's address space
+  lcr3(V2P(null_pgdir));  // switch to null pgdir to force a page fault
+  //lcr3(V2P(kpgdir));
   popcli();
 }
 
@@ -186,16 +213,16 @@ inituvm(pde_t *pgdir, char *init, uint sz)
 
   if(sz >= PGSIZE)
     panic("inituvm: more than a page");
-  mem = kalloc();
+  mem = kalloc(1, (char*)0);
   memset(mem, 0, PGSIZE);
-  mappages(pgdir, 0, PGSIZE, V2P(mem), PTE_W|PTE_U);
+  mappages(1, 0, pgdir, 0, PGSIZE, V2P(mem), PTE_W|PTE_U);
   memmove(mem, init, sz);
 }
 
 // Load a program segment into pgdir.  addr must be page-aligned
 // and the pages from addr to addr+sz must already be mapped.
 int
-loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
+loaduvm(int pid, pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
 {
   uint i, pa, n;
   pte_t *pte;
@@ -203,7 +230,7 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   if((uint) addr % PGSIZE != 0)
     panic("loaduvm: addr must be page aligned");
   for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walkpgdir(pgdir, addr+i, 0)) == 0)
+    if((pte = ittraverse(pid, pgdir, addr+i, 0)) == 0)
       panic("loaduvm: address should exist");
     pa = PTE_ADDR(*pte);
     if(sz - i < PGSIZE)
@@ -219,7 +246,7 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
 // Allocate page tables and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 int
-allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
+allocuvm(int pid, pde_t *pgdir, uint oldsz, uint newsz, uint flags)
 {
   char *mem;
   uint a;
@@ -231,17 +258,17 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 
   a = PGROUNDUP(oldsz);
   for(; a < newsz; a += PGSIZE){
-    mem = kalloc();
+    mem = kalloc(pid, (char*)a);
     if(mem == 0){
       cprintf("allocuvm out of memory\n");
-      deallocuvm(pgdir, newsz, oldsz);
+      deallocuvm(pid, pgdir, newsz, oldsz);
       return 0;
     }
     memset(mem, 0, PGSIZE);
-    if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
+    if(mappages(pid, 0, pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U|flags) < 0){
       cprintf("allocuvm out of memory (2)\n");
-      deallocuvm(pgdir, newsz, oldsz);
-      kfree(mem);
+      deallocuvm(pid, pgdir, newsz, oldsz);
+      kfree(pid, mem);
       return 0;
     }
   }
@@ -252,59 +279,40 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
 // need to be less than oldsz.  oldsz can be larger than the actual
 // process size.  Returns the new process size.
+
 int
-deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
-{
+deallocuvm(int pid, pde_t *pgdir, uint oldsz, uint newsz){
   pte_t *pte;
   uint a, pa;
-
   if(newsz >= oldsz)
     return oldsz;
-
   a = PGROUNDUP(newsz);
-  for(; a  < oldsz; a += PGSIZE){
-    pte = walkpgdir(pgdir, (char*)a, 0);
-    if(!pte)
-      a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
-    else if((*pte & PTE_P) != 0){
-      pa = PTE_ADDR(*pte);
-      if(pa == 0)
-        panic("kfree");
-      char *v = P2V(pa);
-      kfree(v);
-      *pte = 0;
-    }
-  }
-  return newsz;
+  //TODO: File the code that free the allocated pages by users
+  //For range in (a <= va < oldsz), if there are some pages that the process allocates, call kfree(pid, v)
+  return newsz; 
 }
 
 // Free a page table and all the physical memory pages
 // in the user part.
 void
-freevm(pde_t *pgdir)
+freevm(int pid, pde_t *pgdir)
 {
   uint i;
 
   if(pgdir == 0)
     panic("freevm: no pgdir");
-  deallocuvm(pgdir, KERNBASE, 0);
-  for(i = 0; i < NPDENTRIES; i++){
-    if(pgdir[i] & PTE_P){
-      char * v = P2V(PTE_ADDR(pgdir[i]));
-      kfree(v);
-    }
-  }
-  kfree((char*)pgdir);
+  deallocuvm(pid, pgdir, KERNBASE, 0);
+  kfree(0, (char*)pgdir);
 }
 
 // Clear PTE_U on a page. Used to create an inaccessible
 // page beneath the user stack.
 void
-clearpteu(pde_t *pgdir, char *uva)
+clearpteu(int pid, pde_t *pgdir, char *uva)
 {
   pte_t *pte;
 
-  pte = walkpgdir(pgdir, uva, 0);
+  pte = ittraverse(pid, pgdir, uva, 0);
   if(pte == 0)
     panic("clearpteu");
   *pte &= ~PTE_U;
@@ -313,45 +321,44 @@ clearpteu(pde_t *pgdir, char *uva)
 // Given a parent process's page table, create a copy
 // of it for a child.
 pde_t*
-copyuvm(pde_t *pgdir, uint sz)
+copyuvm(int pid, int old_pid, pde_t *pgdir, uint sz)
 {
   pde_t *d;
   pte_t *pte;
   uint pa, i, flags;
   char *mem;
 
-  if((d = setupkvm()) == 0)
+  if((d = setupkvm(0)) == 0)
     return 0;
   for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+    if((pte = ittraverse(old_pid, pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P))
       panic("copyuvm: page not present");
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
+    if((mem = kalloc(pid,(void*)i)) == 0)
       goto bad;
     memmove(mem, (char*)P2V(pa), PGSIZE);
-    if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
-      kfree(mem);
+    if(mappages(pid, 0, d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
+      kfree(pid, mem);
       goto bad;
     }
   }
   return d;
 
 bad:
-  freevm(d);
+  freevm(pid, d);
   return 0;
 }
 
 //PAGEBREAK!
 // Map user virtual address to kernel address.
 char*
-uva2ka(pde_t *pgdir, char *uva)
+uva2ka(int pid, pde_t *pgdir, char *uva)
 {
   pte_t *pte;
-
-  pte = walkpgdir(pgdir, uva, 0);
+  pte = ittraverse(pid, pgdir, uva, 0);
   if((*pte & PTE_P) == 0)
     return 0;
   if((*pte & PTE_U) == 0)
@@ -363,7 +370,7 @@ uva2ka(pde_t *pgdir, char *uva)
 // Most useful when pgdir is not the current page table.
 // uva2ka ensures this only works for PTE_U pages.
 int
-copyout(pde_t *pgdir, uint va, void *p, uint len)
+copyout(int pid, pde_t *pgdir, uint va, void *p, uint len)
 {
   char *buf, *pa0;
   uint n, va0;
@@ -371,7 +378,7 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
   buf = (char*)p;
   while(len > 0){
     va0 = (uint)PGROUNDDOWN(va);
-    pa0 = uva2ka(pgdir, (char*)va0);
+    pa0 = uva2ka(pid, pgdir, (char*)va0);
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (va - va0);
@@ -383,6 +390,123 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
     va = va0 + PGSIZE;
   }
   return 0;
+}
+
+/*
+ * Page fault handler can be called while console lock is acquired,
+ * and when cprintf() is re-entered, the kernel panics.
+ *
+ * The LOG macro should be used while performing early debugging only
+ * and it'll most likely cause a crash during normal operations.
+ */
+#define LOG 0
+#define clprintf(...) if (LOG) cprintf(__VA_ARGS__)
+
+// Returns physical page address from virtual address
+static uint __virt_to_phys(int pid, int shadow, pde_t *pgdir, struct proc *proc, uint va)
+{
+  uint pa;
+  pte_t *pte;
+  
+  if (shadow == 1){
+	pde_t *pde = &pgdir[PDX(va)];
+	pte_t *pgtable = (pte_t*)P2V(PTE_ADDR(*pde));
+	pa = PTE_ADDR(pgtable[PTX(va)]) | OWP(va);
+	return pa;
+  } 
+  //TODO: Fill the code that converts VA to PA for given pid
+  //Hint: Use ittraverse!
+  return pa;
+}
+
+static int __get_flags(int pid, pde_t *pgdir, struct proc *proc, uint va){
+  //This function is used for obtaining flags for given va and pid
+  uint flags;
+  pte_t *pte;
+  //TODO: Fill the code that gets flags in PTE_XV6[idx] 
+  //Hint: use the ittraverse and macro!
+  return flags;
+}
+// Same as __virt_to_phys(), but with extra log
+static uint virt_to_phys(int pid, int shadow, const char *log, pde_t *pgdir, struct proc *proc, uint va)
+{
+  uint pa = __virt_to_phys(pid, shadow, pgdir, proc, va);
+
+  clprintf("virt_to_phys: translated \"%s\"(%d)'s VA 0x%x to PA 0x%x (%s)\n", proc->name, proc->pid, va, pa, log);
+
+  return pa;
+}
+
+void pagefault(void)
+{
+  struct proc *proc;
+  pde_t *pde;
+  pte_t *pgtab;
+  uint va, flags = 0;
+
+  clprintf("pagefault++\n");
+
+  proc = myproc();
+
+  // Get the faulting virtual address
+  va = rcr2();
+  clprintf("Page fault by process \"%s\" (pid: %d) at 0x%x\n", proc->name, proc->pid, va);
+
+  // Print stock pgdir's translation result
+  virt_to_phys(proc->pid, 0, "pgdir", proc->pgdir, proc, va);
+  flags = __get_flags(proc->pid, proc->pgdir, proc, va);
+  // Save PTE flags
+  /*
+  pde = &proc->pgdir[PDX(va)];
+  if(*pde & PTE_P){
+    pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+    flags = PTE_FLAGS(pgtab[PTX(va)]);
+  }
+  */
+
+  // Remove existing shadow_pgdir mapping
+  if (proc->last_va != 0 && proc->last_va != va) {
+    pde = &proc->shadow_pgdir[PDX(proc->last_va)];
+    if (*pde & PTE_P) {
+      pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+      if (pgtab[PTX(proc->last_va)] & PTE_SBRK) {
+        clprintf("\rClearing 0x%x", proc->last_va);
+        pgtab[PTX(proc->last_va)] = 0;
+      }
+    }
+  }
+
+  // Map pgdir's page address to shadow_pgdir's page table
+  pde = &proc->shadow_pgdir[PDX(va)];
+  if (*pde & PTE_P) {
+    pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+  } else {
+    pgtab = (pte_t*)kalloc(0, (char*)-1);
+    clprintf("Allocated pgtable at 0x%x\n", pgtab);
+    // Make sure all those PTE_P bits are zero.
+    memset(pgtab, 0, PGSIZE);
+    // The permissions here are overly generous, but they can
+    // be further restricted by the permissions in the page table
+    // entries, if necessary.
+    *pde = V2P(pgtab) | PTE_P | PTE_W | PTE_U;
+  }
+  pgtab[PTX(va)] = PTE_ADDR(__virt_to_phys(proc->pid, 0, proc->pgdir, proc, va)) | flags;
+
+  /*
+   * Print shadow pgdir's translation result,
+   * this should match with stock pgdir's translation result above!
+   */
+  virt_to_phys(proc->pid, 1, "shadow_pgdir", proc->shadow_pgdir, proc, va);
+  
+  proc->last_va = va;
+  proc->page_faults++;
+
+  // Load a bogus pgdir to force a TLB flush
+  lcr3(V2P(null_pgdir));
+  // Switch to our shadow pgdir
+  lcr3(V2P(proc->shadow_pgdir));
+
+  clprintf("pagefault--\n");
 }
 
 //PAGEBREAK!

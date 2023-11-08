@@ -64,10 +64,11 @@ extern uchar    ioapicid;
 void            ioapicinit(void);
 
 // kalloc.c
-char*           kalloc(void);
-void            kfree(char*);
+char*           kalloc(int, char*);
+void            kfree(int, char*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
+uint			ittraverse(int, char*);
 
 // kbd.c
 void            kbdintr(void);
@@ -173,18 +174,19 @@ void            uartputc(int);
 // vm.c
 void            seginit(void);
 void            kvmalloc(void);
-pde_t*          setupkvm(void);
-char*           uva2ka(pde_t*, char*);
-int             allocuvm(pde_t*, uint, uint);
-int             deallocuvm(pde_t*, uint, uint);
-void            freevm(pde_t*);
+pde_t*          setupkvm(int is_kernel);
+char*           uva2ka(int, pde_t*, char*);
+int             allocuvm(int, pde_t*, uint, uint, uint);
+int             deallocuvm(int, pde_t*, uint, uint);
+void            freevm(int, pde_t*);
 void            inituvm(pde_t*, char*, uint);
-int             loaduvm(pde_t*, char*, struct inode*, uint, uint);
-pde_t*          copyuvm(pde_t*, uint);
+int             loaduvm(int, pde_t*, char*, struct inode*, uint, uint);
+pde_t*          copyuvm(int, int, pde_t*, uint);
 void            switchuvm(struct proc*);
 void            switchkvm(void);
-int             copyout(pde_t*, uint, void*, uint);
-void            clearpteu(pde_t *pgdir, char *uva);
+int             copyout(int, pde_t*, uint, void*, uint);
+void            clearpteu(int, pde_t *pgdir, char *uva);
+void            pagefault(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

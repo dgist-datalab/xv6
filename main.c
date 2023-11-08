@@ -6,18 +6,31 @@
 #include "proc.h"
 #include "x86.h"
 
+#define MAXENTRY 57344
+
 static void startothers(void);
 static void mpmain(void)  __attribute__((noreturn));
 extern pde_t *kpgdir;
 extern char end[]; // first address after kernel loaded from ELF file
 
+int PID[MAXENTRY] = {0,};
+uint VPN[MAXENTRY] = {0,};
+pte_t PTE_XV6[MAXENTRY] = {0,};
+pte_t PTE_KERN[MAXENTRY] = {0,};
 // Bootstrap processor starts running C code here.
 // Allocate a real stack and switch to it, first
 // doing some setup required for memory allocator to work.
 int
 main(void)
 {
+  for (int i = 0; i < MAXENTRY; i++){
+	PID[i] = 0;
+	VPN[i] = 0;
+	PTE_XV6[i] = 0;
+	PTE_KERN[i] = 0;
+  }
   kinit1(end, P2V(4*1024*1024)); // phys page allocator
+  //kinit1(end, P2V(4*1024*1024)); // phys page allocator
   kvmalloc();      // kernel page table
   mpinit();        // detect other processors
   lapicinit();     // interrupt controller
@@ -33,6 +46,7 @@ main(void)
   ideinit();       // disk 
   startothers();   // start other processors
   kinit2(P2V(4*1024*1024), P2V(PHYSTOP)); // must come after startothers()
+  //kinit2(P2V(4*1024*1024), P2V(PHYSTOP)); // must come after startothers()
   userinit();      // first user process
   mpmain();        // finish this processor's setup
 }
@@ -81,7 +95,7 @@ startothers(void)
     // Tell entryother.S what stack to use, where to enter, and what
     // pgdir to use. We cannot use kpgdir yet, because the AP processor
     // is running in low  memory, so we use entrypgdir for the APs too.
-    stack = kalloc();
+    stack = kalloc(0,(char*)-1);
     *(void**)(code-4) = stack + KSTACKSIZE;
     *(void(**)(void))(code-8) = mpenter;
     *(int**)(code-12) = (void *) V2P(entrypgdir);

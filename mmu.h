@@ -76,6 +76,9 @@ struct segdesc {
 // page table index
 #define PTX(va)         (((uint)(va) >> PTXSHIFT) & 0x3FF)
 
+// offset within page
+#define OWP(va)         ((uint)(va) & 0xFFF)
+
 // construct virtual address from indexes and offset
 #define PGADDR(d, t, o) ((uint)((d) << PDXSHIFT | (t) << PTXSHIFT | (o)))
 
@@ -91,9 +94,10 @@ struct segdesc {
 #define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))
 
 // Page table/directory entry flags.
-#define PTE_P           0x001   // Present
-#define PTE_W           0x002   // Writeable
-#define PTE_U           0x004   // User
+#define PTE_P           (1 << 0)   // Present
+#define PTE_W           (1 << 1)   // Writeable
+#define PTE_U           (1 << 2)   // User
+#define PTE_SBRK        (1 << 10)  // sbrk'ed memory (malloc)
 #define PTE_PS          0x080   // Page Size
 
 // Address in page table or page directory entry

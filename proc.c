@@ -88,11 +88,12 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->page_faults = 0;
 
   release(&ptable.lock);
 
   // Allocate kernel stack.
-  if((p->kstack = kalloc()) == 0){
+  if((p->kstack = kalloc(p->pid,(char*)-1)) == 0){
     p->state = UNUSED;
     return 0;
   }
@@ -124,10 +125,11 @@ userinit(void)
   extern char _binary_initcode_start[], _binary_initcode_size[];
 
   p = allocproc();
-  
   initproc = p;
-  if((p->pgdir = setupkvm()) == 0)
+  if((p->pgdir = setupkvm(0)) == 0)
     panic("userinit: out of memory?");
+  p->shadow_pgdir = setupkvm(1);
+  p->last_va = 0;
   inituvm(p->pgdir, _binary_initcode_start, (int)_binary_initcode_size);
   p->sz = PGSIZE;
   memset(p->tf, 0, sizeof(*p->tf));
@@ -149,7 +151,6 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-
   release(&ptable.lock);
 }
 
@@ -160,13 +161,12 @@ growproc(int n)
 {
   uint sz;
   struct proc *curproc = myproc();
-
   sz = curproc->sz;
   if(n > 0){
-    if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    if((sz = allocuvm(curproc->pid, curproc->pgdir, sz, sz + n, PTE_SBRK)) == 0)
       return -1;
   } else if(n < 0){
-    if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    if((sz = deallocuvm(curproc->pid, curproc->pgdir, sz, sz + n)) == 0)
       return -1;
   }
   curproc->sz = sz;
@@ -183,19 +183,20 @@ fork(void)
   int i, pid;
   struct proc *np;
   struct proc *curproc = myproc();
-
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
   }
 
   // Copy process state from proc.
-  if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
-    kfree(np->kstack);
+  if((np->pgdir = copyuvm(np->pid, curproc->pid, curproc->pgdir, curproc->sz)) == 0){
+    kfree(np->pid, np->kstack);
     np->kstack = 0;
     np->state = UNUSED;
     return -1;
   }
+  np->shadow_pgdir = setupkvm(1);
+  np->last_va = 0;
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
@@ -247,6 +248,8 @@ exit(void)
   end_op();
   curproc->cwd = 0;
 
+  // cprintf("Process \"%s\" (pid: %d) had %d page faults\n", curproc->name, curproc->pid, curproc->page_faults);
+
   acquire(&ptable.lock);
 
   // Parent might be sleeping in wait().
@@ -287,9 +290,9 @@ wait(void)
       if(p->state == ZOMBIE){
         // Found one.
         pid = p->pid;
-        kfree(p->kstack);
+        kfree(pid, p->kstack);
         p->kstack = 0;
-        freevm(p->pgdir);
+		freevm(pid, p->pgdir);
         p->pid = 0;
         p->parent = 0;
         p->name[0] = 0;
@@ -377,6 +380,7 @@ sched(void)
   if(readeflags()&FL_IF)
     panic("sched interruptible");
   intena = mycpu()->intena;
+  // cprintf("Process \"%s\" (pid: %d) had %d page faults\n", p->name, p->pid, p->page_faults);
   swtch(&p->context, mycpu()->scheduler);
   mycpu()->intena = intena;
 }
