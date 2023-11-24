@@ -159,6 +159,9 @@ _forktest: forktest.o $(ULIB)
 mkfs: mkfs.c fs.h
 	gcc -Werror -Wall -o mkfs mkfs.c
 
+mkfs_2: mkfs_2.c
+	gcc -Werror -Wall -o mkfs_2 mkfs_2.c
+
 # Prevent deletion of intermediate files, e.g. cat.o, after first build, so
 # that disk image changes after first build are persistent until clean.  More
 # details:
@@ -182,8 +185,10 @@ UPROGS=\
 	_wc\
 	_zombie\
 
-fs.img: mkfs README $(UPROGS)
-	./mkfs fs.img README $(UPROGS)
+fs.img: mkfs mkfs_2 README $(UPROGS)
+	./mkfs tmp.img README $(UPROGS)
+	./mkfs_2 tmp.img fs.img
+	dd if=/dev/urandom bs=512000 count=1 seek=1 conv=notrunc of=fs.img
 
 -include *.d
 

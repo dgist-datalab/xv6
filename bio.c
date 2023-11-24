@@ -26,6 +26,8 @@
 #include "fs.h"
 #include "buf.h"
 
+#define broken_disk 1
+
 struct {
   struct spinlock lock;
   struct buf buf[NBUF];
@@ -59,19 +61,21 @@ binit(void)
 // If not found, allocate a buffer.
 // In either case, return locked buffer.
 static struct buf*
-bget(uint dev, uint blockno)
+__bget(uint dev, uint blockno, bool direct)
 {
   struct buf *b;
 
   acquire(&bcache.lock);
 
   // Is the block already cached?
-  for(b = bcache.head.next; b != &bcache.head; b = b->next){
-    if(b->dev == dev && b->blockno == blockno){
-      b->refcnt++;
-      release(&bcache.lock);
-      acquiresleep(&b->lock);
-      return b;
+  if (!direct) {
+    for(b = bcache.head.next; b != &bcache.head; b = b->next){
+      if(b->dev == dev && b->blockno == blockno){
+        b->refcnt++;
+        release(&bcache.lock);
+        acquiresleep(&b->lock);
+        return b;
+      }
     }
   }
 
@@ -92,16 +96,32 @@ bget(uint dev, uint blockno)
   panic("bget: no buffers");
 }
 
+#define bget(a, b) __bget(a, b, false)
+#define bget_direct(a, b) __bget(a, b, true)
+
 // Return a locked buf with the contents of the indicated block.
 struct buf*
 bread(uint dev, uint blockno)
 {
-  struct buf *b;
+  struct buf *b, *b2;
 
   b = bget(dev, blockno);
-  if((b->flags & B_VALID) == 0) {
+  if (b->flags & B_VALID)
+    return b;
+
+  if (broken_disk == 0) {
+    b2 = bget_direct(b->dev, b->blockno + FSSIZE);
+    iderw(b2); //read
+
+    for (int i = 0; i < BSIZE/sizeof(int); i++)
+      b->udata[i] = b2->udata[i];
+
+    brelse(b2);
+    b->flags |= B_VALID;
+  } else {
     iderw(b);
   }
+
   return b;
 }
 
@@ -109,10 +129,23 @@ bread(uint dev, uint blockno)
 void
 bwrite(struct buf *b)
 {
+  struct buf *b2;
+
   if(!holdingsleep(&b->lock))
     panic("bwrite");
+
+  if (broken_disk != 1) {
+    b2 = bget_direct(b->dev, b->blockno + FSSIZE);
+
+    for (int i = 0; i < BSIZE/sizeof(int); i++)
+      b2->udata[i] = b->udata[i];
+
+    b2->flags |= B_DIRTY;
+    iderw(b2); //write
+    brelse(b2);
+  }
   b->flags |= B_DIRTY;
-  iderw(b);
+  iderw(b); //write
 }
 
 // Release a locked buffer.
