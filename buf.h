@@ -7,7 +7,10 @@ struct buf {
   struct buf *prev; // LRU cache list
   struct buf *next;
   struct buf *qnext; // disk queue
-  uchar data[BSIZE];
+  union {
+    uchar data[BSIZE];
+    unsigned udata[BSIZE / sizeof(unsigned)];
+  };
 };
 #define B_VALID 0x2  // buffer has been read from disk
 #define B_DIRTY 0x4  // buffer needs to be written to disk
