@@ -71,12 +71,16 @@ QEMU = $(shell if which qemu > /dev/null; \
 	echo "***" 1>&2; exit 1)
 endif
 
-CC = $(TOOLPREFIX)gcc
+ifndef BROKEN_DISK
+BROKEN_DISK := -1
+endif
+
+CC = ccache $(TOOLPREFIX)gcc
 AS = $(TOOLPREFIX)gas
 LD = $(TOOLPREFIX)ld
 OBJCOPY = $(TOOLPREFIX)objcopy
 OBJDUMP = $(TOOLPREFIX)objdump
-CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer -Wno-array-bounds -Wno-infinite-recursion
+CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer -Wno-array-bounds -Wno-infinite-recursion -DBROKEN_DISK=$(BROKEN_DISK)
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 ASFLAGS = -m32 -gdwarf-2 -Wa,-divide
 # FreeBSD ld wants ``elf_i386_fbsd''
@@ -188,7 +192,9 @@ UPROGS=\
 fs.img: mkfs mkfs_2 README $(UPROGS)
 	./mkfs tmp.img README $(UPROGS)
 	./mkfs_2 tmp.img fs.img
-	dd if=/dev/urandom bs=512000 count=1 seek=1 conv=notrunc of=fs.img
+ifneq ($(BROKEN_DISK),-1)
+	openssl enc -aes-256-ctr -pass pass:$(SEED) -nosalt < /dev/zero 2>/dev/null | dd bs=512000 count=1 seek=$(BROKEN_DISK) conv=notrunc of=fs.img
+endif
 
 -include *.d
 

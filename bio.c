@@ -26,8 +26,6 @@
 #include "fs.h"
 #include "buf.h"
 
-#define broken_disk 1
-
 struct {
   struct spinlock lock;
   struct buf buf[NBUF];
@@ -110,7 +108,7 @@ bread(uint dev, uint blockno)
     return b;
 
   //TODO implement here
-  if (broken_disk == 0) {
+  if (BROKEN_DISK == 0) {
     b2 = bget_direct(b->dev, b->blockno + FSSIZE);
     iderw(b2); //read
 
@@ -136,7 +134,7 @@ bwrite(struct buf *b)
     panic("bwrite");
 
   //TODO implement here
-  if (broken_disk != 1) {
+  if (BROKEN_DISK != 1) {
     b2 = bget_direct(b->dev, b->blockno + FSSIZE);
 
     for (int i = 0; i < BSIZE/sizeof(int); i++)
