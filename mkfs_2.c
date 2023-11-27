@@ -24,6 +24,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	//TODO implement here
 	ftruncate(wrfd, (FSSIZE * 2) * BSIZE);
 
 	for (int blockno = 0; blockno < FSSIZE; blockno++) {

@@ -109,6 +109,7 @@ bread(uint dev, uint blockno)
   if (b->flags & B_VALID)
     return b;
 
+  //TODO implement here
   if (broken_disk == 0) {
     b2 = bget_direct(b->dev, b->blockno + FSSIZE);
     iderw(b2); //read
@@ -119,7 +120,7 @@ bread(uint dev, uint blockno)
     brelse(b2);
     b->flags |= B_VALID;
   } else {
-    iderw(b);
+    iderw(b); //read
   }
 
   return b;
@@ -134,6 +135,7 @@ bwrite(struct buf *b)
   if(!holdingsleep(&b->lock))
     panic("bwrite");
 
+  //TODO implement here
   if (broken_disk != 1) {
     b2 = bget_direct(b->dev, b->blockno + FSSIZE);
 
