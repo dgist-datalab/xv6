@@ -149,7 +149,7 @@ writetest(void)
     printf(stdout, "error: creat small failed!\n");
     exit();
   }
-  for(i = 0; i < 100; i++){
+  for(i = 0; i < FSSIZE / 10; i++){
     if(write(fd, "aaaaaaaaaa", 10) != 10){
       printf(stdout, "error: write aa %d new file failed\n", i);
       exit();
@@ -168,8 +168,8 @@ writetest(void)
     printf(stdout, "error: open small failed!\n");
     exit();
   }
-  i = read(fd, buf, 2000);
-  if(i == 2000){
+  i = read(fd, buf, FSSIZE * 2);
+  if(i == FSSIZE * 2){
     printf(stdout, "read succeeded ok\n");
   } else {
     printf(stdout, "read failed\n");
@@ -1123,7 +1123,7 @@ bigwrite(void)
   printf(1, "bigwrite test\n");
 
   unlink("bigwrite");
-  for(sz = 499; sz < 12*512; sz += 471){
+  for(sz = 499; sz < 12*(FSSIZE/2); sz += 471){
     fd = open("bigwrite", O_CREATE | O_RDWR);
     if(fd < 0){
       printf(1, "cannot create bigwrite\n");
@@ -1157,7 +1157,7 @@ bigfile(void)
     printf(1, "cannot create bigfile");
     exit();
   }
-  for(i = 0; i < 20; i++){
+  for(i = 0; i < FSSIZE / 50; i++){
     memset(buf, i, 600);
     if(write(fd, buf, 600) != 600){
       printf(1, "write bigfile failed\n");
@@ -1191,7 +1191,7 @@ bigfile(void)
     total += cc;
   }
   close(fd);
-  if(total != 20*600){
+  if(total != FSSIZE / 50 * 600){
     printf(1, "read bigfile wrong total\n");
     exit();
   }
