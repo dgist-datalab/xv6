@@ -89,3 +89,13 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+int
+sys_getcid(void)
+{
+  int cid;
+  pushcli();
+  cid = cpuid();
+  popcli();
+  return cid;
+}
