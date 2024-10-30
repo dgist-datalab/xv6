@@ -105,7 +105,7 @@ exec(char *path, char **argv)
   freevm(curproc->pid, oldpgdir);
   //curproc->pid = 1;
   switchuvm(curproc);
-  for (int i = 0; i < 57344; i ++){
+  for (int i = 0; i < MAXENTRY; i ++){
 	if (PID[i] == 1000) {
 		PID[i] = curproc->pid;
 	}

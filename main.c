@@ -6,7 +6,6 @@
 #include "proc.h"
 #include "x86.h"
 
-#define MAXENTRY 57344
 
 static void startothers(void);
 static void mpmain(void)  __attribute__((noreturn));
@@ -15,6 +14,7 @@ extern char end[]; // first address after kernel loaded from ELF file
 
 int PID[MAXENTRY] = {0,};
 uint VPN[MAXENTRY] = {0,};
+uint PPN[MAXENTRY] = {0,};
 pte_t PTE_XV6[MAXENTRY] = {0,};
 pte_t PTE_KERN[MAXENTRY] = {0,};
 // Bootstrap processor starts running C code here.
@@ -26,6 +26,7 @@ main(void)
   for (int i = 0; i < MAXENTRY; i++){
 	PID[i] = 0;
 	VPN[i] = 0;
+	PPN[i] = 0;
 	PTE_XV6[i] = 0;
 	PTE_KERN[i] = 0;
   }

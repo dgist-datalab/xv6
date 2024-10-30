@@ -1538,6 +1538,7 @@ sbrktest(void)
     kill(pids[i]);
     wait();
   }
+
   if(c == (char*)0xffffffff){
     printf(stdout, "failed sbrk leaked memory\n");
     exit();

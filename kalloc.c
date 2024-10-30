@@ -9,10 +9,10 @@
 #include "mmu.h"
 #include "spinlock.h"
 
-#define MAXENTRY 57334 
-
+int kinit_flag = 0;
 extern int PID[];
 extern uint VPN[];
+extern uint PPN[];
 extern pte_t PTE_XV6[];
 
 void freerange(void *vstart, void *vend);
@@ -45,6 +45,7 @@ kinit1(void *vstart, void *vend)
 void
 kinit2(void *vstart, void *vend)
 {
+  kinit_flag = 1;
   freerange(vstart, vend);
   kmem.use_lock = 1;
 }
@@ -53,63 +54,120 @@ void
 freerange(void *vstart, void *vend)
 {
   char *p;
+  struct run *r;
   p = (char*)PGROUNDUP((uint)vstart);
-  for(; p + PGSIZE <= (char*)vend; p += PGSIZE)
-    //kfree(p);
-	PID[(int)(V2P(p))/4096] = -1; //If PID[i] is -1, the physical frame i is freespace.
+  for(; p + PGSIZE <= (char*)vend; p += PGSIZE){
+    if (vend != 0) {
+//		memset(p, 1, PGSIZE);
+		if(kmem.use_lock)
+			acquire(&kmem.lock);
+		r = (struct run*)p;
+		r->next = kmem.freelist;
+		kmem.freelist = r;
+		if(kmem.use_lock)
+			release(&kmem.lock);
+	}
+	if (vend == P2V(PHYSTOP)) PID[(int)(V2P(p))/4096] = -1; //If PID[i] is -1, the physical frame i is freespace.
+  }
 }
-//PAGEBREAK: 21
-// Free the page of physical memory pointed at by v,
-// which normally should have been returned by a
-// call to kalloc().  (The exception is when
-// initializing the allocator; see kinit above.)
 
-void kfree(int pid, char *v){
+uint hash(int pid, char *vpn) {
+  //TODO: Implement your own hash function
+  return hash;
+}
+
+void kfree(int pid, char *v){ // v is virtual address
 
   uint kv, idx;
+  struct run *r;
   //TODO: Fill the code that supports kfree
   //1. Find the corresponding physical address for given pid and VA
-  //2. Initialize the PID[idx], VPN[idx], and PTE_XV6[idx]
-  //3. For memset, Convert the physical address for free to kernel's virtual address by using P2V macro
-  memset(kv, 1, PGSIZE); //TODO: You must perform memset for P2V(physical address);
+  //To do 1), find the corresponding entry of inverted page table and read the PPN[idx]
+  //2. Initialize the PID[idx], VPN[idx], PPN[idx] and PTE_XV6[idx]
+  //3. For memset(), convert the physical address for free to kernel's virtual address by using P2V macro
+  //4. Insert the free page into kmem.freelist
+  // memset(kv, 1, PGSIZE); //TODO: You must perform memset for P2V(physical address);
 }
 
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
 
-char*
-kalloc(int pid, char *v)
-{
+//Original kfree() code. Refer to this code for implementing inverted-page-table version's kfree()
 
-  int idx;
- 
-  if(kmem.use_lock)
-    acquire(&kmem.lock);
-
-  //TODO: Fill the code that supports kalloc
-  //1. Find the freespace by hash function
-  //2. Consider the case that v is -1, which means that the caller of kalloc is kernel so the virtual address is decided by the allocated physical address (P2V) 
-  //3. Update the value of PID[idx] and VPN[idx] (Do not update the PTE_XV6[idx] in this code!)
-  //4. Return (char*)P2V(physical address), if there is no free space, return 0
-  if(kmem.use_lock)
-    release(&kmem.lock);
-  return 0;
-}
-
+// Free the page of physical memory pointed at by v,
+// which normally should have been returned by a
+// call to kalloc().  (The exception is when
+// initializing the allocator; see kinit above.)
 /*
-char*
-kalloc(void)
+void
+kfree(char *v)
 {
   struct run *r;
 
+  if((uint)v % PGSIZE || v < end || V2P(v) >= PHYSTOP)
+    panic("kfree");
+
+  // Fill with junk to catch dangling refs.
+  memset(v, 1, PGSIZE);
+
   if(kmem.use_lock)
     acquire(&kmem.lock);
-  r = kmem.freelist;
-  if(r)
-    kmem.freelist = r->next;
+  r = (struct run*)v;
+  r->next = kmem.freelist;
+  kmem.freelist = r;
   if(kmem.use_lock)
     release(&kmem.lock);
-  return (char*)r;
 }
 */
+
+char*
+kalloc(int pid, char *v)  // v is virtual address
+{
+
+  int idx;
+  struct run *r; 
+
+// Do not modify this code
+  if (kinit_flag == 0) {
+	  if(kmem.use_lock)
+		acquire(&kmem.lock);
+	r = kmem.freelist;
+	if(r)
+		kmem.freelist = r->next;
+	if(kmem.use_lock)
+		release(&kmem.lock);
+	return (char*)r;
+  }
+  
+//[PJ2] Implementation Start
+//Get free page from kmem.freelist
+//if there is no free page in kmem.freelist, return NULL. On current implementation, (char*)r is NULL in that case.
+
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
+
+  r = kmem.freelist;
+  if (r) kmem.freelist = r->next;
+  else {
+	  if (kmem.use_lock) release(&kmem.lock);
+	  cprintf("No free memory\n");
+	  return (char*)r;
+  }
+
+  //TODO: Fill the code that supports kalloc
+  
+  //1. Find the empty entry of inverted page table (PID[idx] is 1) using hash function and linear probing. 
+  //When the entry which corresponds an index by hash function is already filled, perform linear probing!
+  
+  //2. Consider the case that v is -1, which means that the caller of kalloc is kernel
+  //so the virtual address is decided by the allocated physical address (P2V) 
+  
+  //3. Update the value of PID[idx], VPN[idx] and PPN[idx] (Do not update the PTE_XV6[idx] in this code!)
+  //4. Return (char*)(*r), if there is no free space, return 0
+
+  if(kmem.use_lock)
+    release(&kmem.lock);
+  return (char*)r; 
+}
+

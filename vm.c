@@ -36,6 +36,8 @@ seginit(void)
   lgdt(c->gdt, sizeof(c->gdt));
 }
 
+extern int hash(int pid, char *va);
+
 // Return the address of the PTE in page table pgdir
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page table pages.
@@ -48,6 +50,13 @@ ittraverse(int pid, pde_t *pgdir, const void *va, int alloc) //You don't have to
 	//1. Handle two case: the VA is over KERNBASE or not.
 	//2. For former case, return &PTE_KERN[(uint)V2P(physical address)];
 	//3. For latter case, find the phyiscal address for given pid and va using inverted page table, and return &PTE_XV6[idx]
+  if ((uint)va >= KERNBASE) {
+    return &PTE_KERN[(uint)V2P(va)/PGSIZE]; 
+  }
+  else{
+	//Implement 3) in here	
+	return &PTE_XV6[idx];
+  }
 }
 
 static pte_t *
@@ -281,7 +290,7 @@ allocuvm(int pid, pde_t *pgdir, uint oldsz, uint newsz, uint flags)
 // process size.  Returns the new process size.
 
 int
-deallocuvm(int pid, pde_t *pgdir, uint oldsz, uint newsz){
+deallocuvm(int pid, pde_t *pgdir, uint oldsz, uint newsz){  // oldsz, newsz is virtual address
   pte_t *pte;
   uint a, pa;
   if(newsz >= oldsz)
@@ -414,8 +423,8 @@ static uint __virt_to_phys(int pid, int shadow, pde_t *pgdir, struct proc *proc,
 	pa = PTE_ADDR(pgtable[PTX(va)]) | OWP(va);
 	return pa;
   } 
-  //TODO: Fill the code that converts VA to PA for given pid
-  //Hint: Use ittraverse!
+  pte = ittraverse(pid, pgdir, (void*)va, 0);
+  pa = PTE_ADDR(*pte) | OWP(va);
   return pa;
 }
 
@@ -423,8 +432,8 @@ static int __get_flags(int pid, pde_t *pgdir, struct proc *proc, uint va){
   //This function is used for obtaining flags for given va and pid
   uint flags;
   pte_t *pte;
-  //TODO: Fill the code that gets flags in PTE_XV6[idx] 
-  //Hint: use the ittraverse and macro!
+  pte = ittraverse(pid, pgdir, (void*)va, 0);
+  flags = PTE_FLAGS(*pte);
   return flags;
 }
 // Same as __virt_to_phys(), but with extra log

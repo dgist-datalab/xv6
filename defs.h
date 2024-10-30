@@ -68,7 +68,6 @@ char*           kalloc(int, char*);
 void            kfree(int, char*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
-uint			ittraverse(int, char*);
 
 // kbd.c
 void            kbdintr(void);
